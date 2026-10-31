@@ -23,9 +23,7 @@ readonly SETUP_BINARY="/usr/local/bin/chotu-setup"
 # what `make release` publishes in chotu-setup and status-service, and the
 # architecture is detected from the machine itself.
 #
-# Nothing is published there yet. Until the first release, override
-# STATUS_BINARY_URL and SETUP_BINARY_URL in the environment to point at a dev
-# build; the download failure otherwise names the exact URL that is missing.
+# The release version can be selected by Terraform through CHOTU_RELEASE_VERSION.
 readonly CHOTU_RELEASE_VERSION="${CHOTU_RELEASE_VERSION:-v0.1.0}"
 readonly CHOTU_RELEASE_BASE="${CHOTU_RELEASE_BASE:-https://github.com/goravaa/chotu/releases/download}"
 

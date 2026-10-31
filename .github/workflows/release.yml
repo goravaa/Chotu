@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing version to publish, without the v prefix (for example 0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Select release tag
+        id: version
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ ! "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "version must be MAJOR.MINOR.PATCH without a v prefix" >&2
+              exit 1
+            fi
+            tag="v$INPUT_VERSION"
+          else
+            tag="$REF_NAME"
+          fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "tag must match vMAJOR.MINOR.PATCH" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Save release notes
+        id: notes
+        run: |
+          notes_path="$RUNNER_TEMP/chotu-release-notes.md"
+          cp RELEASE_NOTES.md "$notes_path"
+          echo "path=$notes_path" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ steps.version.outputs.tag }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: status-service/go.mod
+          cache-dependency-path: |
+            status-service/go.sum
+            chotu-setup/go.sum
+
+      - name: Build daemon binaries and checksums
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          make -C chotu-setup release VERSION="$RELEASE_TAG"
+          make -C status-service release VERSION="$RELEASE_TAG"
+          mv chotu-setup/dist/SHA256SUMS chotu-setup/dist/chotu-setup-SHA256SUMS
+          mv status-service/dist/SHA256SUMS status-service/dist/chotu-status-SHA256SUMS
+
+      - name: Build status-service image binary
+        working-directory: status-service
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=$RELEASE_TAG" -o chotu-status .
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and publish status-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./status-service
+          platforms: linux/amd64
+          push: true
+          tags: garvw/chotu-status:${{ steps.version.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/goravaa/chotu
+            org.opencontainers.image.version=${{ steps.version.outputs.tag }}
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          body_path: ${{ steps.notes.outputs.path }}
+          files: |
+            chotu-setup/dist/chotu-setup-linux-*
+            chotu-setup/dist/chotu-setup-SHA256SUMS
+            status-service/dist/chotu-status-linux-*
+            status-service/dist/chotu-status-SHA256SUMS

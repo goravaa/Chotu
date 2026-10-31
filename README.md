@@ -4,7 +4,7 @@ Rent a private GPU machine for coding work. Use it. Give it back.
 
 ## Why this exists
 
-I don't own a GPU machine. A few times a month I hit the ceiling of what I can run locally, and some of that work involves private client data I don't want to paste into someone else's chat box. So instead of buying hardware or uploading data anywhere, chotu spins up a single cloud GPU box, sets itself up, and tears itself down when I'm done. The data stays on my machine. Nothing to clean up afterwards.
+I don't own a GPU machine. A few times a month I hit the ceiling of what I can run locally, and some of that work involves private client data I don't want to paste into someone else's chat box. So instead of buying hardware or sending data to a hosted chat service, chotu spins up a single cloud GPU box, sets itself up, and tears itself down when I'm done. The workspace can sync with the S3 bucket configured for the deployment, so data handling depends on that configuration and the services you enable.
 
 ## What it does
 
@@ -12,7 +12,7 @@ One `terraform apply` gets you a working box with:
 
 - A local LLM endpoint (vLLM serving Qwen3-Coder-30B) reachable only over SSH — no public ports
 - OpenCode wired to it, so it behaves like a normal coding setup
-- Your workspace synced from S3, so the box starts with your code and your data never leaves it
+- Your workspace synchronized with the configured S3 bucket, so the box starts with your code
 - A status page that shows setup progress while the box converges, then system health after
 - Spot support, so a disposable run costs noticeably less than on-demand
 
@@ -47,6 +47,14 @@ The bucket stays in AWS. On the next deploy, set `s3_create_bucket = false` to a
 
 Tweaks live in `terraform/variables.tf` — instance type, region, spot vs on-demand, bucket, model. No other files to touch for a normal deploy.
 
+## Releases
+
+The current tagged version is **v0.1.0**. It provisions one AWS EC2 GPU machine from the Terraform AWS module, downloads the `chotu-setup` and `status-service` Linux binaries from the matching GitHub release, and starts them as systemd services. The release publishes the `status-service` Docker image for standalone use, but Terraform bootstraps the host binaries instead of deploying that image. The inference container is the separately pinned vLLM image configured in Terraform.
+
+This release supports the AWS machine path described above. The repository has Vast.ai and GCP Terraform modules, but they are not documented here as production-ready release targets. The setup is a single machine, and the local model’s quality, supported GPU hardware, and configured integrations limit what it can do. It does not provide a general hosted service or guarantee data never leaves the machine: workspace synchronization to S3 is enabled by default and data sent to configured external tools follows their own handling policies. Review the configuration before using private data.
+
+See [CHANGELOG.md](CHANGELOG.md) and [RELEASE_NOTES.md](RELEASE_NOTES.md) for this release’s scope. Maintainers can publish a new version by pushing a `vMAJOR.MINOR.PATCH` tag; see [docs/releasing.md](docs/releasing.md) for secrets and manual retry instructions.
+
 ## What it won't do (yet)
 
 Honest version: a 30B quantized model is not going to architect your system or untangle your hardest bug. For that kind of work it's mediocre. What it's genuinely good at is routine work over private data — linting, writing and running tests, churning through data analysis scripts — the stuff that's boring but can't leave your machine. If that's your bottleneck, this removes it for a few dollars.
@@ -61,4 +69,4 @@ Terraform provisions one EC2 GPU instance (g5/g6) and cloud-init writes the mach
 - Bigger models (70B+) for when the task actually needs the reasoning, priced per-run via spot
 - Generally: whatever removes the next bottleneck in my own development speed
 
-Built for my own freelance work — mostly client tasks where the data can't leave my machine.
+Built for freelance client work where I need local model inference and control over where workspace data is stored and synchronized.
