@@ -42,6 +42,8 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/checkout@v4
+
       - name: Save release notes
         id: notes
         run: |
